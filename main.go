@@ -5,12 +5,15 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/miekg/dns"
 )
+
+var failed, passed uint64
 
 func main() {
 
@@ -50,6 +53,17 @@ func main() {
 		}
 	}
 
+	go func() {
+		tick := time.Tick(time.Second * 60)
+		for {
+			logrus.WithFields(logrus.Fields{
+				"failed": atomic.LoadUint64(&failed),
+				"passed": atomic.LoadUint64(&passed),
+			}).Infoln("status")
+			<-tick
+		}
+	}()
+
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	signal.Notify(c, syscall.SIGTERM)
@@ -77,5 +91,8 @@ func watch(target, server string, timeout time.Duration) {
 			fields["answers"] = len(r.Answer)
 		}
 		logrus.WithFields(fields).Warnln("dns failed to reponse")
+		atomic.AddUint64(&failed, 1)
+	} else {
+		atomic.AddUint64(&passed, 1)
 	}
 }
